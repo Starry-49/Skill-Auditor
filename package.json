@@ -1,7 +1,7 @@
 {
   "name": "skill-auditor",
   "version": "0.1.0",
-  "description": "Install and run Skill-Auditor for auditing local agent skill libraries.",
+  "description": "Audit and sanitize local AI agent skill libraries.",
   "license": "MIT",
   "private": false,
   "type": "commonjs",

@@ -21,10 +21,18 @@
     "(?i)\\benterprise support\\b",
     "(?i)\\bbook a demo\\b",
     "(?i)\\bsponsor maintainers\\b",
+    "(?i)\\bprofessional services\\b",
+    "(?i)\\bmigration support\\b",
+    "(?i)\\bwatch our .{0,40} video\\b",
+    "(?i)\\bgive (this repo(?:sitory)?|it) a star\\b",
     "(?i)\\bcloud gpus?\\b",
     "(?i)\\bhosted platform\\b"
   ],
   "metadata_patterns": [
+    "(?i)^\\s*skill-author:\\s*(?!.*[/@]).*\\b(?:inc|llc|ltd|corp|gmbh|labs?|team)\\b.*$",
+    "(?i)^\\s*default author(?:/presenter)?\\s*:\\s*\\\"(?!presenter name|speaker name|author name)[^\\\"]+\\\"",
+    "(?i)^\\s*speaker:\\s*(?!presenter name|speaker name)[A-Z][A-Za-z0-9 .&-]{2,}\\.?$",
+    "(?i)^\\s*\\*\\*Default author is \\\"(?!Presenter Name|Speaker Name|Author Name)[^\\\"]+\\\"\\*\\*",
     "(?i)\\bskill-author:\\s*k-dense inc\\.?\\b",
     "(?i)\\bdefault author is \\\"k-dense\\\"\\b",
     "(?i)\\bdefault author/presenter:\\s*\\\"k-dense\\\"\\b",

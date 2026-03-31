@@ -9,24 +9,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-README_DROP_PATTERNS = [
-    re.compile(r"^\[!\[(X|LinkedIn|YouTube)\]"),
-    re.compile(r"K-Dense Web", re.IGNORECASE),
-    re.compile(r"k-dense\.ai", re.IGNORECASE),
-    re.compile(r"Join Our Community", re.IGNORECASE),
-    re.compile(r"Join our Slack", re.IGNORECASE),
-    re.compile(r"commercial support", re.IGNORECASE),
-    re.compile(r"sponsor maintainers", re.IGNORECASE),
-    re.compile(r"K-Dense community highlights", re.IGNORECASE),
-    re.compile(r"Regular Updates.*K-Dense team", re.IGNORECASE),
-    re.compile(r"Enterprise Ready", re.IGNORECASE),
-    re.compile(r"^\>\s*⭐ .*repository useful", re.IGNORECASE),
-    re.compile(r"^\>\s*🎬 .*getting started", re.IGNORECASE),
-]
-
-GENERIC_LINE_DROP_PATTERNS = [
-    re.compile(r"^\s*skill-author:\s*K-Dense Inc\b.*$", re.IGNORECASE),
-]
+SCRIPT_DIR = Path(__file__).resolve().parent
+RULES_PATH = SCRIPT_DIR.parent / "rules" / "default_rules.json"
+MARKDOWN_LIKE_SUFFIXES = {".md", ".mdx", ".rst", ".txt", ".yaml", ".yml"}
 
 
 @dataclass
@@ -37,12 +22,12 @@ class Change:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Sanitize K-Dense-style marketing text from a local claude-scientific-skills installation."
+        description="Sanitize marketing-style injections and suspicious promo skills from a local skill repository."
     )
     parser.add_argument(
         "--root",
         default=str(Path.home() / ".codex" / "skills" / "claude-scientific-skills"),
-        help="Root of the local claude-scientific-skills installation.",
+        help="Root of the local skill repository to sanitize.",
     )
     parser.add_argument(
         "--apply",
@@ -55,6 +40,28 @@ def parse_args() -> argparse.Namespace:
         help="Optional JSON report path.",
     )
     return parser.parse_args()
+
+
+def load_rules() -> dict:
+    return json.loads(RULES_PATH.read_text(encoding="utf-8"))
+
+
+def compile_patterns(patterns: list[str]) -> list[re.Pattern[str]]:
+    return [re.compile(pattern) for pattern in patterns]
+
+
+def build_line_drop_patterns(rules: dict) -> list[re.Pattern[str]]:
+    compiled = []
+    compiled.extend(compile_patterns(rules.get("cta_patterns", [])))
+    compiled.extend(compile_patterns(rules.get("metadata_patterns", [])))
+    for term in rules.get("deny_terms", []):
+        compiled.append(re.compile(re.escape(term), re.IGNORECASE))
+    for domain in rules.get("deny_domains", []):
+        compiled.append(re.compile(re.escape(domain), re.IGNORECASE))
+    compiled.append(re.compile(r"^\[!\[(X|LinkedIn|YouTube)\]", re.IGNORECASE))
+    compiled.append(re.compile(r"^\>\s*⭐ .*repository useful", re.IGNORECASE))
+    compiled.append(re.compile(r"^\>\s*🎬 .*getting started", re.IGNORECASE))
+    return compiled
 
 
 def collapse_blank_lines(text: str) -> str:
@@ -70,23 +77,25 @@ def remove_between(text: str, start_heading: str, end_heading: str) -> str:
     return pattern.sub("\n", text)
 
 
-def sanitize_readme(text: str) -> str:
-    text = text.replace("created by [K-Dense](https://k-dense.ai). ", "")
-    text = re.sub(r"(?ms)\n?<p align=\"center\">.*?</p>\n?", "\n", text)
-    text = remove_between(text, "🚀 Want to Skip the Setup and Just Do the Science?", "🔬 Use Cases")
-    text = remove_between(text, "🎉 Join Our Community!", "📖 Citation")
-
+def sanitize_generic_text(text: str, patterns: list[re.Pattern[str]]) -> str:
     lines = []
     for line in text.splitlines():
-        if any(pattern.search(line) for pattern in README_DROP_PATTERNS):
+        if any(pattern.search(line) for pattern in patterns):
             continue
         lines.append(line)
     return collapse_blank_lines("\n".join(lines))
 
 
+def sanitize_readme(text: str) -> str:
+    text = re.sub(r"(?ms)\n?<p align=\"center\">.*?</p>\n?", "\n", text)
+    text = remove_between(text, "🚀 Want to Skip the Setup and Just Do the Science?", "🔬 Use Cases")
+    text = remove_between(text, "🎉 Join Our Community!", "📖 Citation")
+    return collapse_blank_lines(text)
+
+
 def sanitize_open_source_sponsors(text: str) -> str:
     text = re.sub(
-        r"(?ms)\n## A Note from K-Dense.*?(?=\n\*This list is not exhaustive\.)",
+        r"(?ms)\n## A Note from .*?(?=\n\*This list is not exhaustive\.)",
         "\n",
         text,
     )
@@ -174,13 +183,12 @@ def sanitize_tiledbvcf_skill(text: str) -> str:
     return collapse_blank_lines(text)
 
 
-def apply_generic_line_filters(text: str) -> str:
-    lines = []
-    for line in text.splitlines():
-        if any(pattern.search(line) for pattern in GENERIC_LINE_DROP_PATTERNS):
-            continue
-        lines.append(line)
-    return collapse_blank_lines("\n".join(lines))
+def record_change(path: Path, action: str, changes: list[Change]) -> None:
+    target = str(path)
+    for change in changes:
+        if change.path == target and change.action == action:
+            return
+    changes.append(Change(target, action))
 
 
 def rewrite_text_file(path: Path, transform, apply: bool, changes: list[Change]) -> None:
@@ -188,74 +196,108 @@ def rewrite_text_file(path: Path, transform, apply: bool, changes: list[Change])
         return
     original = path.read_text(encoding="utf-8")
     updated = transform(original)
-    updated = apply_generic_line_filters(updated)
     if updated == original:
         return
-    changes.append(Change(str(path), "updated"))
+    record_change(path, "updated", changes)
     if apply:
         path.write_text(updated, encoding="utf-8")
 
 
-def drop_offer_paths(value):
+def should_sanitize_as_text(path: Path) -> bool:
+    return path.name == "SKILL.md" or path.suffix.lower() in MARKDOWN_LIKE_SUFFIXES
+
+
+def matches_suspicious_name(name: str, patterns: list[re.Pattern[str]]) -> bool:
+    return any(pattern.search(name) for pattern in patterns)
+
+
+def suspicious_path_value(value: str, patterns: list[re.Pattern[str]]) -> bool:
+    candidate = value.rstrip("/").split("/")[-1]
+    return matches_suspicious_name(candidate, patterns)
+
+
+def drop_suspicious_paths(value, patterns: list[re.Pattern[str]]):
     changed = False
     if isinstance(value, list):
         rewritten = []
         for item in value:
-            if item == "./scientific-skills/offer-k-dense-web":
+            if isinstance(item, str) and suspicious_path_value(item, patterns):
                 changed = True
                 continue
-            updated_item, item_changed = drop_offer_paths(item)
+            updated_item, item_changed = drop_suspicious_paths(item, patterns)
             rewritten.append(updated_item)
             changed = changed or item_changed
         return rewritten, changed
     if isinstance(value, dict):
         rewritten = {}
         for key, item in value.items():
-            updated_item, item_changed = drop_offer_paths(item)
+            updated_item, item_changed = drop_suspicious_paths(item, patterns)
             rewritten[key] = updated_item
             changed = changed or item_changed
         return rewritten, changed
     return value, False
 
 
-def sanitize_marketplace(path: Path, apply: bool, changes: list[Change]) -> None:
+def sanitize_marketplace(path: Path, suspicious_patterns: list[re.Pattern[str]], apply: bool, changes: list[Change]) -> None:
     if not path.exists():
         return
     data = json.loads(path.read_text(encoding="utf-8"))
-    data, changed = drop_offer_paths(data)
+    data, changed = drop_suspicious_paths(data, suspicious_patterns)
     if not changed:
         return
-    changes.append(Change(str(path), "updated"))
+    record_change(path, "updated", changes)
     if apply:
         path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
-def remove_offer_directory(path: Path, apply: bool, changes: list[Change]) -> None:
-    if not path.exists():
-        return
-    changes.append(Change(str(path), "deleted"))
-    if apply:
-        shutil.rmtree(path)
+def remove_suspicious_skill_directories(
+    root: Path,
+    suspicious_patterns: list[re.Pattern[str]],
+    apply: bool,
+    changes: list[Change],
+) -> None:
+    candidates = sorted((path for path in root.rglob("*") if path.is_dir()), key=lambda item: len(item.parts), reverse=True)
+    for path in candidates:
+        if not matches_suspicious_name(path.name, suspicious_patterns):
+            continue
+        if not ((path / "SKILL.md").exists() or path.parent.name in {"skills", "scientific-skills"}):
+            continue
+        record_change(path, "deleted", changes)
+        if apply and path.exists():
+            shutil.rmtree(path)
 
 
 def main() -> int:
     args = parse_args()
+    rules = load_rules()
+    line_patterns = build_line_drop_patterns(rules)
+    suspicious_patterns = compile_patterns(rules.get("suspicious_skill_name_patterns", []))
     root = Path(args.root).expanduser().resolve()
     changes: list[Change] = []
     if not root.exists():
         raise SystemExit(f"Root does not exist: {root}")
 
-    rewrite_text_file(root / "README.md", sanitize_readme, args.apply, changes)
-    rewrite_text_file(root / "docs" / "open-source-sponsors.md", sanitize_open_source_sponsors, args.apply, changes)
+    targeted_markdown = {
+        root / "README.md": sanitize_readme,
+        root / "docs" / "open-source-sponsors.md": sanitize_open_source_sponsors,
+        root / "scientific-skills" / "scientific-slides" / "SKILL.md": sanitize_scientific_slides_skill,
+        root / "scientific-skills" / "markdown-mermaid-writing" / "SKILL.md": sanitize_markdown_mermaid,
+        root / "scientific-skills" / "lamindb" / "references" / "integrations.md": sanitize_lamindb_integrations,
+        root / "scientific-skills" / "perplexity-search" / "references" / "openrouter_setup.md": sanitize_openrouter_setup,
+        root / "scientific-skills" / "tiledbvcf" / "SKILL.md": sanitize_tiledbvcf_skill,
+    }
+
+    for path, transform in targeted_markdown.items():
+        rewrite_text_file(
+            path,
+            lambda text, current=transform: sanitize_generic_text(current(text), line_patterns),
+            args.apply,
+            changes,
+        )
+
     rewrite_text_file(
         root / "scientific-skills" / "open-notebook" / "scripts" / "test_open_notebook_skill.py",
         sanitize_open_notebook_tests,
-        args.apply,
-        changes,
-    )
-    rewrite_text_file(
-        root / "scientific-skills" / "scientific-slides" / "SKILL.md",
-        sanitize_scientific_slides_skill,
         args.apply,
         changes,
     )
@@ -266,41 +308,24 @@ def main() -> int:
         changes,
     )
     rewrite_text_file(
-        root / "scientific-skills" / "markdown-mermaid-writing" / "SKILL.md",
-        sanitize_markdown_mermaid,
-        args.apply,
-        changes,
-    )
-    rewrite_text_file(
         root / "scientific-skills" / "diffdock" / "scripts" / "setup_check.py",
         sanitize_diffdock_setup_check,
         args.apply,
         changes,
     )
-    rewrite_text_file(
-        root / "scientific-skills" / "lamindb" / "references" / "integrations.md",
-        sanitize_lamindb_integrations,
-        args.apply,
-        changes,
-    )
-    rewrite_text_file(
-        root / "scientific-skills" / "perplexity-search" / "references" / "openrouter_setup.md",
-        sanitize_openrouter_setup,
-        args.apply,
-        changes,
-    )
-    rewrite_text_file(
-        root / "scientific-skills" / "tiledbvcf" / "SKILL.md",
-        sanitize_tiledbvcf_skill,
-        args.apply,
-        changes,
-    )
 
-    for skill_md in root.rglob("SKILL.md"):
-        rewrite_text_file(skill_md, lambda text: text, args.apply, changes)
+    targeted_markdown_paths = set(targeted_markdown)
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        if path in targeted_markdown_paths:
+            continue
+        if not should_sanitize_as_text(path):
+            continue
+        rewrite_text_file(path, lambda text: sanitize_generic_text(text, line_patterns), args.apply, changes)
 
-    sanitize_marketplace(root / ".claude-plugin" / "marketplace.json", args.apply, changes)
-    remove_offer_directory(root / "scientific-skills" / "offer-k-dense-web", args.apply, changes)
+    sanitize_marketplace(root / ".claude-plugin" / "marketplace.json", suspicious_patterns, args.apply, changes)
+    remove_suspicious_skill_directories(root, suspicious_patterns, args.apply, changes)
 
     report = {
         "root": str(root),
