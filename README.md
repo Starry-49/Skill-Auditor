@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Install via npx](https://img.shields.io/badge/install-npx-black.svg)](https://github.com/Starry-49/Skill-Auditor#quick-install)
 
-`Skill-Auditor` ships today as a Codex skill plus a lightweight installer CLI for auditing local skill libraries for prompt poisoning, ad-style call-to-actions, injected hosted-platform referrals, and suspicious skill naming patterns such as `offer-*`.
+`Skill-Auditor` provides a Codex skill plus a lightweight installer CLI for auditing local skill libraries for prompt poisoning, ad-style call-to-actions, injected hosted-platform referrals, and suspicious skill naming patterns such as `offer-*`.
 
 The repository ships in two layers:
 
@@ -47,7 +47,7 @@ python3 ~/.codex/skills/skill-auditor/scripts/audit_skills.py --format markdown
 - denylisted domains or terms
 - suspicious skill names such as `offer-*`, `promo-*`, or `upsell-*`
 
-The default ruleset includes a small seed denylist for the K-Dense case you mentioned, but the scanner is generic and supports extra `--deny-domain`, `--deny-term`, and `--allow-domain` flags.
+The default ruleset includes a small seed denylist for known hosted-platform referral patterns, including K-Dense references, but the scanner is generic and supports extra `--deny-domain`, `--deny-term`, and `--allow-domain` flags.
 
 ## Local validation
 
@@ -65,7 +65,7 @@ The GitHub Actions workflow also runs a CLI smoke path on every push:
 - installed CLI audit against the clean fixture
 - installed CLI failure path against the poisoned fixture
 
-The `npx` entrypoint itself requires Node on the target machine. This workspace did not have `node` or `npm` installed, so the CLI files were authored but not executed locally.
+The `npx` entrypoint requires Node on the target machine. Python-based validation can run without Node, and the GitHub Actions workflow covers the Node CLI path.
 
 The preferred CLI name is `skill-auditor`. The previous `codex-skill-audit` alias is still exposed for compatibility.
 

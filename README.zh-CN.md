@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Install via npx](https://img.shields.io/badge/install-npx-black.svg)](https://github.com/Starry-49/Skill-Auditor#quick-install)
 
-`Skill-Auditor` 当前是以 Codex skill 加轻量 CLI 安装器的形式交付，用来审查本地 skill 库中是否存在 prompt poisoning、广告式 call-to-action、嵌入式托管平台导流，以及 `offer-*` 这类可疑 skill 命名。
+`Skill-Auditor` 提供一个 Codex skill 和一层轻量 CLI 安装器，用来审查本地 skill 库中是否存在 prompt poisoning、广告式 call-to-action、嵌入式托管平台导流，以及 `offer-*` 这类可疑 skill 命名。
 
 这个仓库分成两层：
 
@@ -47,7 +47,7 @@ python3 ~/.codex/skills/skill-auditor/scripts/audit_skills.py --format markdown
 - denylist 中的域名或关键词
 - `offer-*`、`promo-*`、`upsell-*` 这类可疑 skill 名称
 
-默认规则内置了一小组针对你提到的 K-Dense 案例的种子 denylist，但审查器本身是通用的，也支持额外传入 `--deny-domain`、`--deny-term` 和 `--allow-domain`。
+默认规则内置了一小组针对已知托管平台导流模式的种子 denylist，其中包括 K-Dense 相关词条；审查器本身仍然是通用的，也支持额外传入 `--deny-domain`、`--deny-term` 和 `--allow-domain`。
 
 ## 本地验证
 
@@ -65,7 +65,7 @@ GitHub Actions 还会在每次 push 时跑一条完整的 CLI smoke path：
 - 安装后的 CLI 对 clean fixture 的成功路径
 - 安装后的 CLI 对 poisoned fixture 的失败路径
 
-`npx` 入口在目标机器上仍然需要 Node。这个开发环境本地没有 `node` / `npm`，所以 CLI 入口是按规范写好并交给 GitHub Actions 验证的，而不是在这里直接执行。
+`npx` 入口在目标机器上仍然需要 Node。Python 侧的验证可以在没有 Node 的环境中完成，而 GitHub Actions 会覆盖 Node CLI 路径。
 
 推荐使用的新 CLI 名称是 `skill-auditor`。旧的 `codex-skill-audit` 仍然保留，用于兼容已存在的命令引用。
 
