@@ -16,7 +16,7 @@ jobs:
         with:
           node-version: "20"
       - name: Run Python tests
-        run: python -m unittest -v
+        run: python -m unittest discover -s tests -v
       - name: Check Node CLI syntax
         run: node --check bin/codex-skill-audit.js
       - name: Dry-run install command
