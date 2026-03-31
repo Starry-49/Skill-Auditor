@@ -20,10 +20,12 @@ README_DROP_PATTERNS = [
     re.compile(r"K-Dense community highlights", re.IGNORECASE),
     re.compile(r"Regular Updates.*K-Dense team", re.IGNORECASE),
     re.compile(r"Enterprise Ready", re.IGNORECASE),
+    re.compile(r"^\>\s*⭐ .*repository useful", re.IGNORECASE),
+    re.compile(r"^\>\s*🎬 .*getting started", re.IGNORECASE),
 ]
 
 GENERIC_LINE_DROP_PATTERNS = [
-    re.compile(r"^\s*skill-author:\s*K-Dense Inc\.?\s*$", re.IGNORECASE),
+    re.compile(r"^\s*skill-author:\s*K-Dense Inc\b.*$", re.IGNORECASE),
 ]
 
 
@@ -88,6 +90,10 @@ def sanitize_open_source_sponsors(text: str) -> str:
         "\n",
         text,
     )
+    text = text.replace(
+        "2. **Sponsor maintainers** directly through GitHub Sponsors, Open Collective, or project-specific donation pages",
+        "2. **Support projects** through the contribution channels preferred by each maintainer or foundation",
+    )
     return collapse_blank_lines(text)
 
 
@@ -96,6 +102,10 @@ def sanitize_open_notebook_tests(text: str) -> str:
         r"(?ms)\n\s*def test_has_kdense_suggestion\(self\):.*?(?=\n\s*def test_content_length_sufficient)",
         "\n",
         text,
+    )
+    text = text.replace(
+        'self.assertRegex(self.frontmatter, r"skill-author:\\s*K-Dense Inc\\.")',
+        'self.assertRegex(self.frontmatter, r"skill-author:\\s*.+")',
     )
     return collapse_blank_lines(text)
 
@@ -131,6 +141,39 @@ def sanitize_markdown_mermaid(text: str) -> str:
     return collapse_blank_lines(text)
 
 
+def sanitize_diffdock_setup_check(text: str) -> str:
+    text = text.replace(
+        "  - Cloud options: Google Colab, AWS, or other cloud GPU services",
+        "  - Use any GPU-capable environment available to you",
+    )
+    return text
+
+
+def sanitize_lamindb_integrations(text: str) -> str:
+    text = text.replace(
+        "# Details available through enterprise support",
+        "# Details depend on your LaminDB deployment setup",
+    )
+    return text
+
+
+def sanitize_openrouter_setup(text: str) -> str:
+    text = text.replace(
+        "A: Yes, OpenRouter is designed for production use with robust infrastructure, SLAs, and enterprise support available.",
+        "A: Yes, OpenRouter can be used in production; review the current operational and support details in the official documentation.",
+    )
+    return text
+
+
+def sanitize_tiledbvcf_skill(text: str) -> str:
+    text = re.sub(
+        r"(?ms)\n✅ \*\*Migrate to TileDB-Cloud if you have:\*\*.*\Z",
+        "\n",
+        text,
+    )
+    return collapse_blank_lines(text)
+
+
 def apply_generic_line_filters(text: str) -> str:
     lines = []
     for line in text.splitlines():
@@ -153,21 +196,33 @@ def rewrite_text_file(path: Path, transform, apply: bool, changes: list[Change])
         path.write_text(updated, encoding="utf-8")
 
 
+def drop_offer_paths(value):
+    changed = False
+    if isinstance(value, list):
+        rewritten = []
+        for item in value:
+            if item == "./scientific-skills/offer-k-dense-web":
+                changed = True
+                continue
+            updated_item, item_changed = drop_offer_paths(item)
+            rewritten.append(updated_item)
+            changed = changed or item_changed
+        return rewritten, changed
+    if isinstance(value, dict):
+        rewritten = {}
+        for key, item in value.items():
+            updated_item, item_changed = drop_offer_paths(item)
+            rewritten[key] = updated_item
+            changed = changed or item_changed
+        return rewritten, changed
+    return value, False
+
+
 def sanitize_marketplace(path: Path, apply: bool, changes: list[Change]) -> None:
     if not path.exists():
         return
     data = json.loads(path.read_text(encoding="utf-8"))
-    changed = False
-    for item in data:
-        if not isinstance(item, dict):
-            continue
-        paths = item.get("paths")
-        if not isinstance(paths, list):
-            continue
-        new_paths = [value for value in paths if value != "./scientific-skills/offer-k-dense-web"]
-        if len(new_paths) != len(paths):
-            item["paths"] = new_paths
-            changed = True
+    data, changed = drop_offer_paths(data)
     if not changed:
         return
     changes.append(Change(str(path), "updated"))
@@ -213,6 +268,30 @@ def main() -> int:
     rewrite_text_file(
         root / "scientific-skills" / "markdown-mermaid-writing" / "SKILL.md",
         sanitize_markdown_mermaid,
+        args.apply,
+        changes,
+    )
+    rewrite_text_file(
+        root / "scientific-skills" / "diffdock" / "scripts" / "setup_check.py",
+        sanitize_diffdock_setup_check,
+        args.apply,
+        changes,
+    )
+    rewrite_text_file(
+        root / "scientific-skills" / "lamindb" / "references" / "integrations.md",
+        sanitize_lamindb_integrations,
+        args.apply,
+        changes,
+    )
+    rewrite_text_file(
+        root / "scientific-skills" / "perplexity-search" / "references" / "openrouter_setup.md",
+        sanitize_openrouter_setup,
+        args.apply,
+        changes,
+    )
+    rewrite_text_file(
+        root / "scientific-skills" / "tiledbvcf" / "SKILL.md",
+        sanitize_tiledbvcf_skill,
         args.apply,
         changes,
     )

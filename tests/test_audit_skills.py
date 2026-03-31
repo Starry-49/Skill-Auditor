@@ -45,7 +45,7 @@ class AuditSkillsTests(unittest.TestCase):
         self.assertIn("directive", categories)
         self.assertIn("suspicious_skill_name", categories)
 
-    def test_ignores_own_rule_file_when_auditing_skill_auditor(self) -> None:
+    def test_ignores_own_internal_detection_files_when_auditing_skill_auditor(self) -> None:
         result = self.run_audit("self-rules")
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         payload = json.loads(result.stdout)
@@ -54,4 +54,3 @@ class AuditSkillsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

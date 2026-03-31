@@ -276,10 +276,10 @@ def scan_files(
             continue
         if (
             skill == "skill-auditor"
-            and len(rel_path.parts) >= 3
-            and rel_path.parts[-2:] == ("rules", "default_rules.json")
+            and len(rel_path.parts) >= 2
+            and rel_path.parts[1] in {"rules", "scripts"}
         ):
-            # Do not flag the auditor's own detection rules as live marketing content.
+            # Do not flag the auditor's own detection machinery as live marketing content.
             continue
 
         scanned_files += 1
